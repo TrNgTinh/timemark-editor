@@ -1,7 +1,7 @@
 """
 Timemark Editor - Web App Version
 Chạy trên điện thoại, miễn phí 100%
-Version 2.0 - Fixed for Streamlit Cloud
+Version 2.1 - Custom font support
 """
 
 import streamlit as st
@@ -9,6 +9,7 @@ from PIL import Image, ImageDraw, ImageFont
 import io
 import zipfile
 from datetime import datetime
+import os
 
 # Page config
 st.set_page_config(
@@ -74,21 +75,34 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
+# Helper function to load font
+@st.cache_resource
+def load_font(size):
+    """Load custom font with fallback"""
+    font_paths = [
+        "arial.ttf",  # Custom font in root directory
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",  # Linux
+        "C:/Windows/Fonts/arial.ttf",  # Windows (local)
+    ]
+    
+    for font_path in font_paths:
+        try:
+            if os.path.exists(font_path):
+                return ImageFont.truetype(font_path, size)
+        except:
+            continue
+    
+    # Fallback to default
+    return ImageFont.load_default()
+
 # Helper function to generate image
 def generate_image_with_position(input_image, date_str, time_str, ward, district, province, country, font_size, position):
     """Generate image with text at specified position"""
     output = input_image.copy()
     draw = ImageDraw.Draw(output)
     
-    # Use default font (works on Streamlit Cloud)
-    try:
-        # Try to use a better font if available
-        font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", font_size)
-    except:
-        # Fallback to default
-        font = ImageFont.load_default()
-        # Scale up default font by drawing larger
-        font_size = int(font_size * 1.5)  # Compensate for smaller default font
+    # Load font
+    font = load_font(font_size)
     
     # Format datetime
     try:
