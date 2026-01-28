@@ -75,25 +75,55 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
+# Helper function to download font from URL
+@st.cache_resource
+def download_font_from_url(url, filename):
+    """Download font file from URL and cache it"""
+    import urllib.request
+    try:
+        # Download to temp location
+        urllib.request.urlretrieve(url, filename)
+        return True
+    except Exception as e:
+        st.warning(f"⚠️ Không thể tải font từ URL: {str(e)}")
+        return False
+
 # Helper function to load font
 @st.cache_resource
 def load_font(size):
-    """Load custom font with fallback"""
+    """Load custom font with fallback and size compensation"""
+    
+    # Try to download font from Google Fonts if not exists locally
+    font_url = "https://github.com/google/fonts/raw/main/apache/roboto/static/Roboto-Bold.ttf"
+    local_font_file = "downloaded_font.ttf"
+    
+    # Download font if not exists
+    if not os.path.exists(local_font_file) and not os.path.exists("arial.ttf"):
+        download_font_from_url(font_url, local_font_file)
+    
     font_paths = [
         "arial.ttf",  # Custom font in root directory
+        local_font_file,  # Downloaded font
         "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",  # Linux
+        "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",  # Alternative Linux
         "C:/Windows/Fonts/arial.ttf",  # Windows (local)
     ]
     
+    # Try to load custom fonts
     for font_path in font_paths:
         try:
             if os.path.exists(font_path):
-                return ImageFont.truetype(font_path, size)
-        except:
+                return ImageFont.truetype(font_path, size), False
+        except Exception as e:
             continue
     
-    # Fallback to default
-    return ImageFont.load_default()
+    # If all fail, use default font with size compensation
+    # Default font is much smaller, so we need to scale up
+    try:
+        # Try to create a larger default font
+        return ImageFont.load_default(), True  # Return flag indicating default font
+    except:
+        return ImageFont.load_default(), True
 
 # Helper function to generate image
 def generate_image_with_position(input_image, date_str, time_str, ward, district, province, country, font_size, position):
@@ -102,7 +132,16 @@ def generate_image_with_position(input_image, date_str, time_str, ward, district
     draw = ImageDraw.Draw(output)
     
     # Load font
-    font = load_font(font_size)
+    font, is_default = load_font(font_size)
+    
+    # If using default font, compensate for smaller size
+    if is_default:
+        # Default font is about 3x smaller, so multiply spacing
+        actual_font_size = font_size * 3
+        line_spacing_multiplier = 3
+    else:
+        actual_font_size = font_size
+        line_spacing_multiplier = 1
     
     # Format datetime
     try:
@@ -119,7 +158,7 @@ def generate_image_with_position(input_image, date_str, time_str, ward, district
     
     img_width, img_height = output.size
     padding = 30
-    line_spacing = font_size + 10
+    line_spacing = (actual_font_size + 10) * line_spacing_multiplier
     
     # Calculate position
     if position == "top-left":
@@ -148,17 +187,33 @@ def generate_image_with_position(input_image, date_str, time_str, ward, district
             try:
                 bbox = draw.textbbox((0, 0), text, font=font)
                 text_width = bbox[2] - bbox[0]
+                # If default font, multiply width
+                if is_default:
+                    text_width = text_width * line_spacing_multiplier
             except:
-                # Fallback for default font
-                text_width = len(text) * (font_size // 2)
+                # Fallback calculation
+                text_width = len(text) * (actual_font_size // 2)
             text_x = x - text_width
         else:
             text_x = x
         
-        # Shadow
-        draw.text((text_x+2, current_y+2), text, font=font, fill=shadow_color)
-        # Main text
-        draw.text((text_x, current_y), text, font=font, fill=text_color)
+        # If using default font, draw text multiple times to make it bolder and larger
+        if is_default:
+            # Draw multiple times with slight offsets to simulate larger size
+            for dx in range(line_spacing_multiplier):
+                for dy in range(line_spacing_multiplier):
+                    # Shadow
+                    draw.text((text_x+2+dx, current_y+2+dy), text, font=font, fill=shadow_color)
+            for dx in range(line_spacing_multiplier):
+                for dy in range(line_spacing_multiplier):
+                    # Main text
+                    draw.text((text_x+dx, current_y+dy), text, font=font, fill=text_color)
+        else:
+            # Normal rendering for custom fonts
+            # Shadow
+            draw.text((text_x+2, current_y+2), text, font=font, fill=shadow_color)
+            # Main text
+            draw.text((text_x, current_y), text, font=font, fill=text_color)
     
     return output
 
